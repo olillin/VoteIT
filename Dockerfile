@@ -1,22 +1,28 @@
-FROM ubuntu:14.04
-MAINTAINER Erik Axelsson <erikaxelsson1@gmail.com>
+ARG NODE_VERSION=24-alpine
+LABEL org.opencontainers.image.authors="digIT"
 
-# install our dependencies and nodejs
-RUN echo "deb http://archive.ubuntu.com/ubuntu trusty main universe" > /etc/apt/sources.list
-RUN echo "deb http://ppa.launchpad.net/chris-lea/node.js/ubuntu trusty main " > /etc/apt/sources.list
-RUN apt-get update
-RUN apt-get -y install nodejs
+FROM node:${NODE_VERSION}
 
-# use changes to package.json to force Docker not to use the cache
-# when we change our application's nodejs dependencies:
-ADD package.json /tmp/package.json
-RUN cd /tmp && npm install
-RUN mkdir -p /opt/app && cp -a /tmp/node_modules /opt/app/
+# Install pnpm
+RUN yarn global add pnpm
+
+# Install dependencies using pnpm
+RUN --mount=type=bind,source=package.json,target=package.json \
+    --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
+    --mount=type=bind,source=gulpfile.js,target=gulpfile.js \
+    --mount=type=cache,target=/pnpm/store \
+    pnpm install --prod --frozen-lockfile
+
+
 
 # From here we load our application's code in, therefore the previous docker
 # "layer" thats been cached will be used if possible
 WORKDIR /opt/app
-ADD . /opt/app
+COPY . /opt/app
+
+# Run the application as a non-root user.
+RUN chown -R node:node /usr/src/app
+USER node
 
 EXPOSE 3000
 
